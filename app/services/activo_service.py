@@ -15,7 +15,12 @@ from app.repositories.area_mapa_repository import obtener_area_mapa_por_id
 from app.repositories.responsable_repository import obtener_responsable_por_id
 from app.repositories.tipo_activo_repository import obtener_tipo_activo_por_id
 from app.repositories.ubicacion_historial_repository import crear_historial_ubicacion
-from app.schemas.activo_schema import ActivoCreate, ActivoMovimiento, ActivoReubicacion
+from app.schemas.activo_schema import (
+    ActivoCreate,
+    ActivoMovimiento,
+    ActivoReasignacion,
+    ActivoReubicacion,
+)
 from app.utils.coordenadas import generar_coordenadas_en_area
 
 
@@ -45,6 +50,14 @@ def crear_activo_service(db: Session, activo_data: ActivoCreate):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Área de mapa no encontrada",
+        )
+
+    nombre_area = area.nombre.strip().lower()
+
+    if nombre_area in ("baños", "banos"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Baños no puede usarse como área inicial de registro",
         )
 
     activo_existente = obtener_activo_por_codigo(db, activo_data.codigo)
@@ -207,6 +220,68 @@ def reubicar_activo_en_empresa_service(
         coord_x=activo_actualizado.coord_x_actual,
         coord_y=activo_actualizado.coord_y_actual,
         tipo_movimiento="reubicado_empresa",
+    )
+
+    return activo_actualizado
+
+
+def reasignar_activo_service(
+    db: Session,
+    id_activo: int,
+    reasignacion_data: ActivoReasignacion,
+):
+    activo = obtener_activo_por_id(db, id_activo)
+
+    if activo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Activo no encontrado",
+        )
+
+    responsable = obtener_responsable_por_id(
+        db,
+        reasignacion_data.id_responsable,
+    )
+
+    if responsable is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Responsable no encontrado",
+        )
+
+    if responsable.estado == "fuera_de_labores":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede reasignar a un responsable fuera de labores",
+        )
+
+    area = obtener_area_mapa_por_id(db, reasignacion_data.id_area)
+
+    if area is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Área de mapa no encontrada",
+        )
+
+    coord_x, coord_y = generar_coordenadas_en_area(area)
+
+    activo.id_responsable = responsable.id_responsable
+    activo.estado = "activo"
+    activo_actualizado = reubicar_activo_en_empresa(
+        db=db,
+        activo=activo,
+        id_area=area.id_area,
+        coord_x=coord_x,
+        coord_y=coord_y,
+    )
+
+    crear_historial_ubicacion(
+        db=db,
+        id_activo=activo_actualizado.id_activo,
+        id_area=activo_actualizado.id_area,
+        coord_x=activo_actualizado.coord_x_actual,
+        coord_y=activo_actualizado.coord_y_actual,
+        tipo_movimiento="reasignacion",
     )
 
     return activo_actualizado

@@ -9,6 +9,7 @@ import type {
   LoginResponse,
   Responsable,
   TipoActivo,
+  UbicacionHistorial,
 } from "./types/backend";
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8000/ws/activos";
@@ -374,11 +375,13 @@ function Sidebar({
   onChange,
   T,
   mantenimientoCount,
+  onLogout,
 }: {
   page: Page;
   onChange: (p: Page) => void;
   T: ThemeColors;
   mantenimientoCount: number;
+  onLogout: () => void;
 }) {
   return (
     <aside style={{
@@ -487,6 +490,23 @@ function Sidebar({
           }}/>
           <span style={{ fontSize: 11, color: T.green, fontWeight: 500 }}>Sistema activo</span>
         </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          style={{
+            width: "100%",
+            marginBottom: 10,
+            background: T.bg2,
+            border: `1px solid ${T.border}`,
+            borderRadius: 8,
+            color: T.text2,
+            padding: "8px 12px",
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          Cerrar sesión
+        </button>
         <p style={{ margin: 0, fontSize: 10, color: T.text3 }}>SIGA-TI v2.0 · 2025</p>
       </div>
     </aside>
@@ -576,15 +596,22 @@ function DashboardPage({
   onRefresh: () => void;
 }) {
   const [hovered, setHovered] = useState<Area | null>(null);
+  const [selectedArea, setSelectedArea] = useState<Area | null>(null);
   const [selectedActivo, setSelectedActivo] = useState<ActivoBackend | null>(null);
   const [codigoBusqueda, setCodigoBusqueda] = useState("");
   const [mensajeBusqueda, setMensajeBusqueda] = useState("");
   const [simulacionActiva, setSimulacionActiva] = useState(false);
   const [mensajeSimulacion, setMensajeSimulacion] = useState("");
+  const [historialActivo, setHistorialActivo] = useState<UbicacionHistorial[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const totalActivos = areas.reduce((s, a) => s + a.activos, 0);
   const totalOperativos = areas.reduce((s, a) => s + a.operativos, 0);
   const totalMantenimiento = areas.reduce((s, a) => s + a.mantenimiento, 0);
   const tiposPorId = new Map(tipos.map((tipo) => [tipo.id_tipo_activo, tipo.nombre]));
+  const areaDetalle = selectedArea ?? hovered;
+  const areasPorId = new Map(
+    areas.map((area) => [Number(area.id), area.name]),
+  );
   const responsablesPorId = new Map(
     responsables.map((responsable) => [
       responsable.id_responsable,
@@ -603,6 +630,19 @@ function DashboardPage({
       setSelectedActivo(activoActualizado);
     }
   }, [activos, selectedActivo?.id_activo]);
+
+  useEffect(() => {
+    if (!selectedActivo) {
+      setHistorialActivo([]);
+      return;
+    }
+
+    setCargandoHistorial(true);
+    apiRequest<UbicacionHistorial[]>(`/activos/${selectedActivo.id_activo}/historial`)
+      .then((historial) => setHistorialActivo(historial.slice(0, 5)))
+      .catch(() => setHistorialActivo([]))
+      .finally(() => setCargandoHistorial(false));
+  }, [selectedActivo?.id_activo]);
 
   async function cargarEstadoSimulacion() {
     try {
@@ -739,8 +779,8 @@ function DashboardPage({
         <button type="button" onClick={iniciarSimulacion} style={secondaryButton(T.green)}>Iniciar</button>
         <button type="button" onClick={detenerSimulacion} style={secondaryButton(T.red)}>Detener</button>
         <button type="button" onClick={ejecutarReglas} style={secondaryButton(T.accent)}>Ejecutar reglas</button>
-        <button type="button" onClick={cargarEstadoSimulacion} style={secondaryButton(T.text2)}>Estado</button>
-        <button type="button" onClick={onRefresh} style={secondaryButton(T.text2)}>Actualizar</button>
+        <button type="button" onClick={cargarEstadoSimulacion} style={secondaryButton(T.text2)}>Ver estado</button>
+        <button type="button" onClick={onRefresh} style={secondaryButton(T.text2)}>Actualizar mapa</button>
         {alertas.length > 0 && (
           <span style={{
             fontSize: 11,
@@ -773,7 +813,7 @@ function DashboardPage({
             overflow: "auto",
           }}>
             <SectionLabel T={T}>Detalle del Área</SectionLabel>
-            {hovered ? (
+            {areaDetalle ? (
               <div style={{ marginTop: 12, animation: "fadeInUp 0.3s ease" }}>
                 <span style={{
                   display: "inline-flex",
@@ -784,35 +824,40 @@ function DashboardPage({
                   fontSize: 11,
                   fontWeight: 600,
                   marginBottom: 12,
-                  background: `${areaColor(hovered, T)}20`,
-                  color: areaColor(hovered, T),
-                  border: `1px solid ${areaColor(hovered, T)}40`,
+                  background: `${areaColor(areaDetalle, T)}20`,
+                  color: areaColor(areaDetalle, T),
+                  border: `1px solid ${areaColor(areaDetalle, T)}40`,
                 }}>
-                  <span>●</span> {areaLabel(hovered)}
+                  <span>●</span> {areaLabel(areaDetalle)}
                 </span>
 
-                <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: T.text1 }}>{hovered.name}</h2>
+                <h2 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: T.text1 }}>{areaDetalle.name}</h2>
+                {selectedArea && (
+                  <button type="button" onClick={() => setSelectedArea(null)} style={{ ...secondaryButton(T.text2), marginBottom: 12 }}>
+                    Limpiar selección
+                  </button>
+                )}
 
-                {hovered.tieneActivos ? (
+                {areaDetalle.tieneActivos ? (
                   <>
-                    <SRow icon="■" label="Total activos" value={hovered.activos} T={T} />
-                    <SRow icon="✓" label="Operativos" value={hovered.operativos} vc={T.green} T={T} />
-                    <SRow icon="!" label="Mantenimiento" value={hovered.mantenimiento} vc={T.yellow} T={T} />
+                    <SRow icon="■" label="Total activos" value={areaDetalle.activos} T={T} />
+                    <SRow icon="✓" label="Operativos" value={areaDetalle.operativos} vc={T.green} T={T} />
+                    <SRow icon="!" label="Mantenimiento" value={areaDetalle.mantenimiento} vc={T.yellow} T={T} />
                     <div style={{ marginTop: 16 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ fontSize: 11, color: T.text3 }}>Estado operativo</span>
                         <span style={{ fontSize: 12, color: T.text1, fontWeight: 700 }}>
-                          {Math.round((hovered.operativos / hovered.activos) * 100)}%
+                          {Math.round((areaDetalle.operativos / areaDetalle.activos) * 100)}%
                         </span>
                       </div>
                       <div style={{ background: T.bg3, borderRadius: 99, height: 6, overflow: "hidden" }}>
                         <div style={{
                           height: 6,
                           borderRadius: 99,
-                          width: `${(hovered.operativos / hovered.activos) * 100}%`,
-                          background: areaColor(hovered, T),
+                          width: `${(areaDetalle.operativos / areaDetalle.activos) * 100}%`,
+                          background: areaColor(areaDetalle, T),
                           transition: "width 0.5s ease",
-                          boxShadow: `0 0 8px ${areaColor(hovered, T)}`,
+                          boxShadow: `0 0 8px ${areaColor(areaDetalle, T)}`,
                         }}/>
                       </div>
                     </div>
@@ -839,21 +884,42 @@ function DashboardPage({
             )}
             {selectedActivo && (
               <div style={{ marginTop: 16, borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>
-                <SectionLabel T={T}>Activo seleccionado</SectionLabel>
-                <h3 style={{ margin: "10px 0 6px", fontSize: 15, color: T.text1 }}>
+                <SectionLabel T={T}>Ficha del activo</SectionLabel>
+                <h3 style={{ margin: "10px 0 6px", fontSize: 16, color: T.text1 }}>
                   {selectedActivo.codigo}
                 </h3>
                 <p style={{ margin: "0 0 10px", fontSize: 12, color: T.text2, lineHeight: 1.4 }}>
                   {selectedActivo.nombre}
                 </p>
-                <SRow icon="●" label="Estado" value={selectedActivo.estado === "mantenimiento" ? 0 : 1} vc={selectedActivo.estado === "mantenimiento" ? T.yellow : T.green} T={T} />
-                <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 11.5, color: T.text3 }}>
-                  <span>Tipo: {tiposPorId.get(selectedActivo.id_tipo_activo) ?? `Tipo ${selectedActivo.id_tipo_activo}`}</span>
-                  <span>Responsable: {responsablesPorId.get(selectedActivo.id_responsable) ?? `Responsable ${selectedActivo.id_responsable}`}</span>
-                  <span>Área ID: {selectedActivo.id_area}</span>
-                  <span>Conexión: {selectedActivo.estado_conexion}</span>
-                  <span>X: {selectedActivo.coord_x_actual.toFixed(2)}</span>
-                  <span>Y: {selectedActivo.coord_y_actual.toFixed(2)}</span>
+                <div style={{ display: "grid", gap: 7, marginTop: 10, fontSize: 11.5, color: T.text3 }}>
+                  <FichaDato label="Tipo" value={tiposPorId.get(selectedActivo.id_tipo_activo) ?? `Tipo ${selectedActivo.id_tipo_activo}`} T={T} />
+                  <FichaDato label="Responsable" value={responsablesPorId.get(selectedActivo.id_responsable) ?? `Responsable ${selectedActivo.id_responsable}`} T={T} />
+                  <FichaDato label="Área actual" value={areasPorId.get(selectedActivo.id_area) ?? `Área ${selectedActivo.id_area}`} T={T} />
+                  <FichaDato label="Estado" value={selectedActivo.estado} T={T} />
+                  <FichaDato label="Conexión" value={selectedActivo.estado_conexion} T={T} />
+                  <FichaDato label="Coordenadas" value={`${selectedActivo.coord_x_actual.toFixed(2)}, ${selectedActivo.coord_y_actual.toFixed(2)}`} T={T} />
+                  <FichaDato label="Registro" value={selectedActivo.fecha_registro.slice(0, 10)} T={T} />
+                  <FichaDato label="Última actualización" value={selectedActivo.fecha_actualizacion.slice(0, 19).replace("T", " ")} T={T} />
+                </div>
+
+                <div style={{ marginTop: 14, borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
+                  <SectionLabel T={T}>Últimos movimientos</SectionLabel>
+                  {cargandoHistorial ? (
+                    <p style={{ margin: "10px 0 0", color: T.text3, fontSize: 11 }}>Cargando historial...</p>
+                  ) : historialActivo.length === 0 ? (
+                    <p style={{ margin: "10px 0 0", color: T.text3, fontSize: 11 }}>Sin movimientos registrados.</p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      {historialActivo.map((item) => (
+                        <div key={item.id_historial} style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 8, padding: 8 }}>
+                          <p style={{ margin: "0 0 4px", color: T.text1, fontSize: 11.5, fontWeight: 700 }}>{item.tipo_movimiento}</p>
+                          <p style={{ margin: 0, color: T.text3, fontSize: 10.5 }}>
+                            {areasPorId.get(item.id_area) ?? `Área ${item.id_area}`} · {item.fecha_hora.slice(0, 19).replace("T", " ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -944,7 +1010,7 @@ function DashboardPage({
               }}
             />
             {areas.map((area) => {
-              const active = hovered?.id === area.id;
+              const active = hovered?.id === area.id || selectedArea?.id === area.id;
               const col = areaColor(area, T);
               return (
                 (area.boxes ?? [{ top: area.top, left: area.left, width: area.width, height: area.height }]).map((box, index) => (
@@ -952,6 +1018,7 @@ function DashboardPage({
                     key={`${area.id}-${index}`}
                     onMouseEnter={() => setHovered(area)}
                     onMouseLeave={() => setHovered(null)}
+                    onClick={() => setSelectedArea(area)}
                     style={{
                       position: "absolute",
                       top: box.top,
@@ -1262,10 +1329,17 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
   const [areas, setAreas] = useState<AreaMapa[]>([]);
   const [tipos, setTipos] = useState<TipoActivo[]>([]);
   const [mensaje, setMensaje] = useState("");
+  const [pasoActivo, setPasoActivo] = useState<"responsable" | "asignacion" | "activo" | "usuario">("responsable");
+  const [ultimoResponsable, setUltimoResponsable] = useState<Responsable | null>(null);
+  const [ultimaAsignacion, setUltimaAsignacion] = useState<{ id_area: number; fecha_inicio: string } | null>(null);
+  const [ultimoActivo, setUltimoActivo] = useState<ActivoBackend | null>(null);
   const [responsable, setResponsable] = useState({ nombres: "", apellidos: "", correo: "", telefono: "", estado: "laborando" });
   const [asignacion, setAsignacion] = useState({ id_responsable: "", id_area: "", fecha_inicio: new Date().toISOString().slice(0, 10), fecha_fin: "", estado: "activo" });
   const [usuario, setUsuario] = useState({ usuario: "", password: "", codigo_registro: "", id_responsable: "" });
   const [activo, setActivo] = useState({ codigo: "", nombre: "", marca: "", modelo: "", numero_serie: "", estado: "activo", estado_conexion: "conectado", fuera_empresa: false, id_tipo_activo: "", id_responsable: "", id_area: "", es_movil: true });
+  const areasRegistroInicial = areas.filter((area) => normalizarNombreArea(area.nombre) !== "banos");
+  const responsablesLaborando = responsables.filter((item) => item.estado !== "fuera_de_labores");
+  const responsablesSistemas = responsablesLaborando;
 
   function cargarCatalogos() {
     Promise.all([
@@ -1286,9 +1360,14 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
   async function crearResponsable(event: React.FormEvent) {
     event.preventDefault();
     try {
-      await apiRequest<Responsable>("/responsables", { method: "POST", token, body: responsable });
-      setMensaje("Responsable registrado.");
+      const nuevoResponsable = await apiRequest<Responsable>("/responsables", { method: "POST", token, body: responsable });
+      setUltimoResponsable(nuevoResponsable);
+      setAsignacion((actual) => ({ ...actual, id_responsable: String(nuevoResponsable.id_responsable) }));
+      setActivo((actual) => ({ ...actual, id_responsable: String(nuevoResponsable.id_responsable) }));
+      setUsuario((actual) => ({ ...actual, id_responsable: String(nuevoResponsable.id_responsable) }));
+      setMensaje("Responsable registrado. Continúa con su asignación laboral.");
       setResponsable({ nombres: "", apellidos: "", correo: "", telefono: "", estado: "laborando" });
+      setPasoActivo("asignacion");
       cargarCatalogos();
     } catch (error) {
       setMensaje(error instanceof Error ? error.message : "No se pudo registrar el responsable");
@@ -1303,7 +1382,10 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
         token,
         body: { ...asignacion, id_responsable: Number(asignacion.id_responsable), id_area: Number(asignacion.id_area), fecha_fin: asignacion.fecha_fin || null },
       });
-      setMensaje("Asignación registrada.");
+      setUltimaAsignacion({ id_area: Number(asignacion.id_area), fecha_inicio: asignacion.fecha_inicio });
+      setActivo((actual) => ({ ...actual, id_area: asignacion.id_area, id_responsable: asignacion.id_responsable }));
+      setMensaje("Asignación registrada. Ahora puedes registrar un activo para ese responsable.");
+      setPasoActivo("activo");
       cargarCatalogos();
     } catch (error) {
       setMensaje(error instanceof Error ? error.message : "No se pudo registrar la asignación");
@@ -1313,13 +1395,16 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
   async function crearActivo(event: React.FormEvent) {
     event.preventDefault();
     try {
-      await apiRequest("/activos", {
+      const nuevoActivo = await apiRequest<ActivoBackend>("/activos", {
         method: "POST",
         token,
         body: { ...activo, id_tipo_activo: Number(activo.id_tipo_activo), id_responsable: Number(activo.id_responsable), id_area: Number(activo.id_area) },
       });
-      setMensaje("Activo registrado.");
+      setUltimoActivo(nuevoActivo);
+      setMensaje("Activo registrado en el mapa. Si corresponde, crea un usuario del sistema.");
       setActivo({ codigo: "", nombre: "", marca: "", modelo: "", numero_serie: "", estado: "activo", estado_conexion: "conectado", fuera_empresa: false, id_tipo_activo: "", id_responsable: "", id_area: "", es_movil: true });
+      setPasoActivo("usuario");
+      cargarCatalogos();
       onRefresh();
     } catch (error) {
       setMensaje(error instanceof Error ? error.message : "No se pudo registrar el activo");
@@ -1333,71 +1418,143 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
         method: "POST",
         body: { ...usuario, id_responsable: Number(usuario.id_responsable) },
       });
-      setMensaje("Usuario registrado.");
+      setMensaje("Usuario registrado. El flujo principal quedó completo.");
       setUsuario({ usuario: "", password: "", codigo_registro: "", id_responsable: "" });
     } catch (error) {
       setMensaje(error instanceof Error ? error.message : "No se pudo crear el usuario");
     }
   }
 
+  const pasos = [
+    { id: "responsable", numero: 1, titulo: "Responsable", ayuda: "Registra a la persona que tendrá activos asignados." },
+    { id: "asignacion", numero: 2, titulo: "Asignación", ayuda: "Define el área laboral del responsable." },
+    { id: "activo", numero: 3, titulo: "Activo TI", ayuda: "Registra el equipo y el sistema generará su ubicación." },
+    { id: "usuario", numero: 4, titulo: "Usuario", ayuda: "Crea acceso solo para responsables autorizados." },
+  ] as const;
+  const areaUltimaAsignacion = ultimaAsignacion
+    ? areas.find((area) => area.id_area === ultimaAsignacion.id_area)
+    : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <Topbar T={T} title="Registros" sub="Responsables, asignaciones laborales y activos" />
-      <div style={{ overflow: "auto", padding: 20, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-        {mensaje && <div style={{ gridColumn: "1 / -1", color: T.accent, fontSize: 13 }}>{mensaje}</div>}
-        <form onSubmit={crearResponsable} style={panelStyle(T)}>
-          <SectionLabel T={T}>Responsable</SectionLabel>
-          <input required placeholder="Nombres" value={responsable.nombres} onChange={(e) => setResponsable({ ...responsable, nombres: e.target.value })} style={formInput(T)} />
-          <input required placeholder="Apellidos" value={responsable.apellidos} onChange={(e) => setResponsable({ ...responsable, apellidos: e.target.value })} style={formInput(T)} />
-          <input required type="email" placeholder="Correo" value={responsable.correo} onChange={(e) => setResponsable({ ...responsable, correo: e.target.value })} style={formInput(T)} />
-          <input placeholder="Teléfono" value={responsable.telefono} onChange={(e) => setResponsable({ ...responsable, telefono: e.target.value })} style={formInput(T)} />
-          <button style={primaryButton(T)}>Registrar responsable</button>
-        </form>
-        <form onSubmit={crearAsignacion} style={panelStyle(T)}>
-          <SectionLabel T={T}>Asignación laboral</SectionLabel>
-          <select required value={asignacion.id_responsable} onChange={(e) => setAsignacion({ ...asignacion, id_responsable: e.target.value })} style={formInput(T)}>
-            <option value="">Responsable</option>
-            {responsables.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos}</option>)}
-          </select>
-          <select required value={asignacion.id_area} onChange={(e) => setAsignacion({ ...asignacion, id_area: e.target.value })} style={formInput(T)}>
-            <option value="">Área</option>
-            {areas.map((a) => <option key={a.id_area} value={a.id_area}>{a.nombre}</option>)}
-          </select>
-          <input required type="date" value={asignacion.fecha_inicio} onChange={(e) => setAsignacion({ ...asignacion, fecha_inicio: e.target.value })} style={formInput(T)} />
-          <button style={primaryButton(T)}>Crear asignación</button>
-        </form>
-        <form onSubmit={crearActivo} style={panelStyle(T)}>
-          <SectionLabel T={T}>Activo</SectionLabel>
-          <input required placeholder="Código" value={activo.codigo} onChange={(e) => setActivo({ ...activo, codigo: e.target.value })} style={formInput(T)} />
-          <input required placeholder="Nombre" value={activo.nombre} onChange={(e) => setActivo({ ...activo, nombre: e.target.value })} style={formInput(T)} />
-          <input placeholder="Marca" value={activo.marca} onChange={(e) => setActivo({ ...activo, marca: e.target.value })} style={formInput(T)} />
-          <input placeholder="Modelo" value={activo.modelo} onChange={(e) => setActivo({ ...activo, modelo: e.target.value })} style={formInput(T)} />
-          <input placeholder="Número de serie" value={activo.numero_serie} onChange={(e) => setActivo({ ...activo, numero_serie: e.target.value })} style={formInput(T)} />
-          <select required value={activo.id_tipo_activo} onChange={(e) => setActivo({ ...activo, id_tipo_activo: e.target.value })} style={formInput(T)}>
-            <option value="">Tipo</option>
-            {tipos.map((t) => <option key={t.id_tipo_activo} value={t.id_tipo_activo}>{t.nombre}</option>)}
-          </select>
-          <select required value={activo.id_responsable} onChange={(e) => setActivo({ ...activo, id_responsable: e.target.value })} style={formInput(T)}>
-            <option value="">Responsable</option>
-            {responsables.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos}</option>)}
-          </select>
-          <select required value={activo.id_area} onChange={(e) => setActivo({ ...activo, id_area: e.target.value })} style={formInput(T)}>
-            <option value="">Área inicial</option>
-            {areas.map((a) => <option key={a.id_area} value={a.id_area}>{a.nombre}</option>)}
-          </select>
-          <button style={primaryButton(T)}>Registrar activo</button>
-        </form>
-        <form onSubmit={crearUsuario} style={panelStyle(T)}>
-          <SectionLabel T={T}>Usuario del sistema</SectionLabel>
-          <input required placeholder="Usuario" value={usuario.usuario} onChange={(e) => setUsuario({ ...usuario, usuario: e.target.value })} style={formInput(T)} />
-          <input required placeholder="Contraseña" type="password" value={usuario.password} onChange={(e) => setUsuario({ ...usuario, password: e.target.value })} style={formInput(T)} />
-          <input required placeholder="Código de registro" value={usuario.codigo_registro} onChange={(e) => setUsuario({ ...usuario, codigo_registro: e.target.value })} style={formInput(T)} />
-          <select required value={usuario.id_responsable} onChange={(e) => setUsuario({ ...usuario, id_responsable: e.target.value })} style={formInput(T)}>
-            <option value="">Responsable de TI / Sistemas</option>
-            {responsables.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos}</option>)}
-          </select>
-          <button style={primaryButton(T)}>Crear usuario</button>
-        </form>
+      <Topbar T={T} title="Registros" sub="Flujo recomendado: responsable, asignación laboral, activo y usuario del sistema" />
+      <div style={{ overflow: "auto", padding: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 280px", gap: 16 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ ...panelStyle(T), marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+                {pasos.map((paso) => {
+                  const active = pasoActivo === paso.id;
+                  return (
+                    <button
+                      key={paso.id}
+                      type="button"
+                      onClick={() => setPasoActivo(paso.id)}
+                      style={{
+                        background: active ? `${T.accent}22` : T.bg3,
+                        border: `1px solid ${active ? T.accent : T.border}`,
+                        borderRadius: 8,
+                        color: active ? T.accent : T.text2,
+                        padding: "10px 8px",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ display: "block", fontSize: 10, fontWeight: 800, marginBottom: 4 }}>Paso {paso.numero}</span>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>{paso.titulo}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {mensaje && <div style={{ ...panelStyle(T), color: T.accent, fontSize: 13, marginBottom: 16 }}>{mensaje}</div>}
+
+            {pasoActivo === "responsable" && (
+              <form onSubmit={crearResponsable} style={panelStyle(T)}>
+                <SectionLabel T={T}>1. Registrar responsable</SectionLabel>
+                <p style={{ margin: "0 0 14px", color: T.text3, fontSize: 12 }}>Primero registra a la persona que tendrá asignaciones laborales y activos TI.</p>
+                <input required placeholder="Nombres" value={responsable.nombres} onChange={(e) => setResponsable({ ...responsable, nombres: e.target.value })} style={formInput(T)} />
+                <input required placeholder="Apellidos" value={responsable.apellidos} onChange={(e) => setResponsable({ ...responsable, apellidos: e.target.value })} style={formInput(T)} />
+                <input required type="email" placeholder="Correo institucional" value={responsable.correo} onChange={(e) => setResponsable({ ...responsable, correo: e.target.value })} style={formInput(T)} />
+                <input placeholder="Teléfono" value={responsable.telefono} onChange={(e) => setResponsable({ ...responsable, telefono: e.target.value })} style={formInput(T)} />
+                <button style={primaryButton(T)}>Guardar responsable y continuar</button>
+              </form>
+            )}
+
+            {pasoActivo === "asignacion" && (
+              <form onSubmit={crearAsignacion} style={panelStyle(T)}>
+                <SectionLabel T={T}>2. Crear asignación laboral</SectionLabel>
+                <p style={{ margin: "0 0 14px", color: T.text3, fontSize: 12 }}>La asignación laboral indica dónde trabaja el responsable. No representa la ubicación física del activo.</p>
+                <select required value={asignacion.id_responsable} onChange={(e) => setAsignacion({ ...asignacion, id_responsable: e.target.value })} style={formInput(T)}>
+                  <option value="">Responsable</option>
+                  {responsablesLaborando.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos} - {r.estado}</option>)}
+                </select>
+                <select required value={asignacion.id_area} onChange={(e) => setAsignacion({ ...asignacion, id_area: e.target.value })} style={formInput(T)}>
+                  <option value="">Área laboral</option>
+                  {areas.map((a) => <option key={a.id_area} value={a.id_area}>{a.nombre}</option>)}
+                </select>
+                <input required type="date" value={asignacion.fecha_inicio} onChange={(e) => setAsignacion({ ...asignacion, fecha_inicio: e.target.value })} style={formInput(T)} />
+                <button style={primaryButton(T)}>Guardar asignación y continuar</button>
+              </form>
+            )}
+
+            {pasoActivo === "activo" && (
+              <form onSubmit={crearActivo} style={panelStyle(T)}>
+                <SectionLabel T={T}>3. Registrar activo TI</SectionLabel>
+                <p style={{ margin: "0 0 14px", color: T.text3, fontSize: 12 }}>Selecciona el área inicial; el sistema generará coordenadas automáticamente dentro del mapa.</p>
+                <input required placeholder="Código del activo" value={activo.codigo} onChange={(e) => setActivo({ ...activo, codigo: e.target.value })} style={formInput(T)} />
+                <input required placeholder="Nombre del activo" value={activo.nombre} onChange={(e) => setActivo({ ...activo, nombre: e.target.value })} style={formInput(T)} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                  <input placeholder="Marca" value={activo.marca} onChange={(e) => setActivo({ ...activo, marca: e.target.value })} style={formInput(T)} />
+                  <input placeholder="Modelo" value={activo.modelo} onChange={(e) => setActivo({ ...activo, modelo: e.target.value })} style={formInput(T)} />
+                  <input placeholder="Número de serie" value={activo.numero_serie} onChange={(e) => setActivo({ ...activo, numero_serie: e.target.value })} style={formInput(T)} />
+                </div>
+                <select required value={activo.id_tipo_activo} onChange={(e) => setActivo({ ...activo, id_tipo_activo: e.target.value })} style={formInput(T)}>
+                  <option value="">Tipo de activo</option>
+                  {tipos.map((t) => <option key={t.id_tipo_activo} value={t.id_tipo_activo}>{t.nombre}</option>)}
+                </select>
+                <select required value={activo.id_responsable} onChange={(e) => setActivo({ ...activo, id_responsable: e.target.value })} style={formInput(T)}>
+                  <option value="">Responsable</option>
+                  {responsablesLaborando.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos}</option>)}
+                </select>
+                <select required value={activo.id_area} onChange={(e) => setActivo({ ...activo, id_area: e.target.value })} style={formInput(T)}>
+                  <option value="">Área inicial</option>
+                  {areasRegistroInicial.map((a) => <option key={a.id_area} value={a.id_area}>{a.nombre}</option>)}
+                </select>
+                <p style={{ margin: "-6px 0 12px", fontSize: 11, color: T.text3 }}>Baños no se permite como área inicial de registro.</p>
+                <button style={primaryButton(T)}>Registrar activo en el mapa</button>
+              </form>
+            )}
+
+            {pasoActivo === "usuario" && (
+              <form onSubmit={crearUsuario} style={panelStyle(T)}>
+                <SectionLabel T={T}>4. Crear usuario del sistema</SectionLabel>
+                <p style={{ margin: "0 0 14px", color: T.text3, fontSize: 12 }}>Solo crea usuario para personal autorizado a ingresar al sistema.</p>
+                <input required placeholder="Usuario" value={usuario.usuario} onChange={(e) => setUsuario({ ...usuario, usuario: e.target.value })} style={formInput(T)} />
+                <input required placeholder="Contraseña" type="password" value={usuario.password} onChange={(e) => setUsuario({ ...usuario, password: e.target.value })} style={formInput(T)} />
+                <input required placeholder="Código de registro" value={usuario.codigo_registro} onChange={(e) => setUsuario({ ...usuario, codigo_registro: e.target.value })} style={formInput(T)} />
+                <select required value={usuario.id_responsable} onChange={(e) => setUsuario({ ...usuario, id_responsable: e.target.value })} style={formInput(T)}>
+                  <option value="">Responsable de TI / Sistemas</option>
+                  {responsablesSistemas.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos}</option>)}
+                </select>
+                <button style={primaryButton(T)}>Crear usuario del sistema</button>
+              </form>
+            )}
+          </div>
+
+          <aside style={{ ...panelStyle(T), position: "sticky", top: 20, alignSelf: "start" }}>
+            <SectionLabel T={T}>Contexto del registro</SectionLabel>
+            <RegistroResumen label="Responsable" value={ultimoResponsable ? `${ultimoResponsable.nombres} ${ultimoResponsable.apellidos}` : "Pendiente"} T={T} />
+            <RegistroResumen label="Área laboral" value={areaUltimaAsignacion?.nombre ?? "Pendiente"} T={T} />
+            <RegistroResumen label="Último activo" value={ultimoActivo ? `${ultimoActivo.codigo} - ${ultimoActivo.nombre}` : "Pendiente"} T={T} />
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}` }}>
+              <p style={{ margin: 0, color: T.text3, fontSize: 11, lineHeight: 1.5 }}>
+                Para bajas, mantenimiento o reasignaciones usa la pestaña Mantenimiento. Así el registro de datos nuevos queda separado de la gestión posterior.
+              </p>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -1405,6 +1562,24 @@ function RegistrosPage({ T, token, onRefresh }: { T: ThemeColors; token: string;
 
 function panelStyle(T: ThemeColors): CSSProperties {
   return { background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 };
+}
+
+function RegistroResumen({ label, value, T }: { label: string; value: string; T: ThemeColors }) {
+  return (
+    <div style={{ padding: "12px 0", borderBottom: `1px solid ${T.border}` }}>
+      <p style={{ margin: "0 0 4px", color: T.text3, fontSize: 10, fontWeight: 800, textTransform: "uppercase" }}>{label}</p>
+      <p style={{ margin: 0, color: T.text1, fontSize: 13, fontWeight: 700 }}>{value}</p>
+    </div>
+  );
+}
+
+function FichaDato({ label, value, T }: { label: string; value: string; T: ThemeColors }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "90px minmax(0, 1fr)", gap: 8 }}>
+      <span style={{ color: T.text3 }}>{label}</span>
+      <span style={{ color: T.text1, fontWeight: 700, overflowWrap: "anywhere" }}>{value}</span>
+    </div>
+  );
 }
 
 /* ===============================================================
@@ -1416,20 +1591,96 @@ function MantenimientoPage({
   areas,
   tipos,
   responsables,
+  token,
+  onRefresh,
 }: {
   T: ThemeColors;
   activos: ActivoBackend[];
   areas: AreaMapa[];
   tipos: TipoActivo[];
   responsables: Responsable[];
+  token: string;
+  onRefresh: () => void;
 }) {
+  const [actualizandoId, setActualizandoId] = useState<number | null>(null);
+  const [estadoResponsable, setEstadoResponsable] = useState({ id_responsable: "", estado: "fuera_de_labores" });
+  const [reasignacion, setReasignacion] = useState({ id_activo: "", id_responsable: "", id_area: "" });
+  const [mensajeMantenimiento, setMensajeMantenimiento] = useState("");
   const nombreArea = (idArea: number) => areas.find((area) => area.id_area === idArea)?.nombre ?? `Área ${idArea}`;
   const nombreTipo = (idTipo: number) => tipos.find((tipo) => tipo.id_tipo_activo === idTipo)?.nombre ?? `Tipo ${idTipo}`;
   const nombreResponsable = (idResponsable: number) => {
     const responsable = responsables.find((item) => item.id_responsable === idResponsable);
     return responsable ? `${responsable.nombres} ${responsable.apellidos}` : `Responsable ${idResponsable}`;
   };
-  const items = activos.filter((activo) => activo.estado === "mantenimiento");
+  const estadosMantenimiento = ["mantenimiento", "baja", "pendiente_reasignacion"];
+  const items = activos.filter((activo) => estadosMantenimiento.includes(activo.estado));
+  const activosPendientes = activos.filter((activo) => activo.estado === "pendiente_reasignacion");
+  const responsablesLaborando = responsables.filter((responsable) => responsable.estado !== "fuera_de_labores");
+  const areasReasignacion = areas.filter((area) => normalizarNombreArea(area.nombre) !== "banos");
+  const colorEstado = (estado: string) => {
+    if (estado === "mantenimiento") return T.yellow;
+    if (estado === "baja") return T.red;
+    return T.accent;
+  };
+  const textoEstado = (estado: string) => {
+    if (estado === "pendiente_reasignacion") return "Pendiente de reasignación";
+    return estado.charAt(0).toUpperCase() + estado.slice(1);
+  };
+  async function cambiarEstado(idActivo: number, estado: string) {
+    setActualizandoId(idActivo);
+    setMensajeMantenimiento("");
+
+    try {
+      await apiRequest(`/activos/${idActivo}/estado`, {
+        method: "PUT",
+        token,
+        body: { estado },
+      });
+      onRefresh();
+      setMensajeMantenimiento("Estado del activo actualizado.");
+    } catch (error) {
+      setMensajeMantenimiento(error instanceof Error ? error.message : "No se pudo actualizar el activo");
+    } finally {
+      setActualizandoId(null);
+    }
+  }
+  async function cambiarEstadoResponsable(event: React.FormEvent) {
+    event.preventDefault();
+    setMensajeMantenimiento("");
+
+    try {
+      await apiRequest(`/responsables/${estadoResponsable.id_responsable}/estado`, {
+        method: "PUT",
+        token,
+        body: { estado: estadoResponsable.estado },
+      });
+      setMensajeMantenimiento("Estado del responsable actualizado.");
+      setEstadoResponsable({ id_responsable: "", estado: "fuera_de_labores" });
+      onRefresh();
+    } catch (error) {
+      setMensajeMantenimiento(error instanceof Error ? error.message : "No se pudo actualizar el responsable");
+    }
+  }
+  async function reasignarActivo(event: React.FormEvent) {
+    event.preventDefault();
+    setMensajeMantenimiento("");
+
+    try {
+      await apiRequest(`/activos/${reasignacion.id_activo}/reasignar`, {
+        method: "PUT",
+        token,
+        body: {
+          id_responsable: Number(reasignacion.id_responsable),
+          id_area: Number(reasignacion.id_area),
+        },
+      });
+      setMensajeMantenimiento("Activo reasignado correctamente.");
+      setReasignacion({ id_activo: "", id_responsable: "", id_area: "" });
+      onRefresh();
+    } catch (error) {
+      setMensajeMantenimiento(error instanceof Error ? error.message : "No se pudo reasignar el activo");
+    }
+  }
   const byArea = areas
     .map((area) => ({
       id: area.id_area,
@@ -1440,11 +1691,11 @@ function MantenimientoPage({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <Topbar T={T} title="Gestión de Mantenimiento" sub={`${items.length} activos actualmente en mantenimiento`} />
+      <Topbar T={T} title="Gestión de Mantenimiento" sub={`${items.length} activos requieren revisión, baja o reasignación`} />
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "12px 20px", background: T.bg1, borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
         {byArea.length === 0 ? (
-          <span style={{ fontSize: 12, color: T.text3 }}>No hay activos en mantenimiento.</span>
+          <span style={{ fontSize: 12, color: T.text3 }}>No hay activos que requieran revisión.</span>
         ) : (
           byArea.map((area) => (
             <div key={area.id} style={{ display: "flex", alignItems: "center", gap: 8, background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 10, padding: "6px 14px" }}>
@@ -1457,9 +1708,50 @@ function MantenimientoPage({
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
+        <div style={{ ...panelStyle(T), marginBottom: 16 }}>
+          <SectionLabel T={T}>Estado de responsable</SectionLabel>
+          <p style={{ margin: "0 0 12px", color: T.text3, fontSize: 12 }}>
+            Si un responsable deja de laborar, su usuario se deshabilita y sus activos quedan pendientes de reasignación.
+          </p>
+          {mensajeMantenimiento && <p style={{ margin: "0 0 12px", color: T.accent, fontSize: 12 }}>{mensajeMantenimiento}</p>}
+          <form onSubmit={cambiarEstadoResponsable} style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1fr) 200px 180px", gap: 10, alignItems: "start" }}>
+            <select required value={estadoResponsable.id_responsable} onChange={(e) => setEstadoResponsable({ ...estadoResponsable, id_responsable: e.target.value })} style={formInput(T)}>
+              <option value="">Responsable</option>
+              {responsables.map((r) => <option key={r.id_responsable} value={r.id_responsable}>{r.nombres} {r.apellidos} - {r.estado}</option>)}
+            </select>
+            <select required value={estadoResponsable.estado} onChange={(e) => setEstadoResponsable({ ...estadoResponsable, estado: e.target.value })} style={formInput(T)}>
+              <option value="laborando">Laborando</option>
+              <option value="fuera_de_labores">Fuera de labores</option>
+            </select>
+            <button style={primaryButton(T)}>Actualizar responsable</button>
+          </form>
+        </div>
+
+        <div style={{ ...panelStyle(T), marginBottom: 16 }}>
+          <SectionLabel T={T}>Reasignación de activo</SectionLabel>
+          <p style={{ margin: "0 0 12px", color: T.text3, fontSize: 12 }}>
+            Usa este flujo cuando un activo quede pendiente por salida o cambio de responsable.
+          </p>
+          <form onSubmit={reasignarActivo} style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1fr) minmax(180px, 1fr) minmax(160px, 1fr) 160px", gap: 10, alignItems: "start" }}>
+            <select required value={reasignacion.id_activo} onChange={(e) => setReasignacion({ ...reasignacion, id_activo: e.target.value })} style={formInput(T)}>
+              <option value="">Activo pendiente</option>
+              {activosPendientes.map((activo) => <option key={activo.id_activo} value={activo.id_activo}>{activo.codigo} - {activo.nombre}</option>)}
+            </select>
+            <select required value={reasignacion.id_responsable} onChange={(e) => setReasignacion({ ...reasignacion, id_responsable: e.target.value })} style={formInput(T)}>
+              <option value="">Nuevo responsable</option>
+              {responsablesLaborando.map((responsable) => <option key={responsable.id_responsable} value={responsable.id_responsable}>{responsable.nombres} {responsable.apellidos}</option>)}
+            </select>
+            <select required value={reasignacion.id_area} onChange={(e) => setReasignacion({ ...reasignacion, id_area: e.target.value })} style={formInput(T)}>
+              <option value="">Nueva área</option>
+              {areasReasignacion.map((area) => <option key={area.id_area} value={area.id_area}>{area.nombre}</option>)}
+            </select>
+            <button style={primaryButton(T)}>Reasignar</button>
+          </form>
+        </div>
+
         {items.length === 0 ? (
           <div style={{ color: T.text3, fontSize: 14, textAlign: "center", padding: 60 }}>
-            No existen activos registrados con estado mantenimiento.
+            No existen activos registrados con estado mantenimiento, baja o pendiente de reasignación.
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
@@ -1471,7 +1763,7 @@ function MantenimientoPage({
                   border: `1px solid ${T.border}`,
                   borderRadius: 14,
                   padding: "16px",
-                  borderLeft: `4px solid ${T.yellow}`,
+                  borderLeft: `4px solid ${colorEstado(activo.estado)}`,
                   transition: "all 0.3s ease",
                 }}
                 onMouseEnter={(e) => {
@@ -1486,24 +1778,50 @@ function MantenimientoPage({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <code style={{ fontSize: 11, color: T.accent, fontWeight: 600 }}>{activo.codigo}</code>
                   <span style={{
-                    background: `${T.yellow}15`,
-                    color: T.yellow,
-                    border: `1px solid ${T.yellow}40`,
+                    background: `${colorEstado(activo.estado)}15`,
+                    color: colorEstado(activo.estado),
+                    border: `1px solid ${colorEstado(activo.estado)}40`,
                     display: "inline-block",
                     padding: "3px 12px",
                     borderRadius: 20,
                     fontSize: 10.5,
                     fontWeight: 600,
                   }}>
-                    {nombreTipo(activo.id_tipo_activo)}
+                    {textoEstado(activo.estado)}
                   </span>
                 </div>
                 <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 600, color: T.text1 }}>{activo.nombre}</h3>
-                <p style={{ margin: "0 0 10px", fontSize: 11.5, color: T.text3 }}>{nombreArea(activo.id_area)}</p>
+                <p style={{ margin: "0 0 10px", fontSize: 11.5, color: T.text3 }}>{nombreTipo(activo.id_tipo_activo)} · {nombreArea(activo.id_area)}</p>
                 <div style={{ background: T.bg3, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
                   <span style={{ fontSize: 11.5, color: T.text2 }}>
                     Estado de conexión: {activo.estado_conexion}
                   </span>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    disabled={actualizandoId === activo.id_activo}
+                    onClick={() => cambiarEstado(activo.id_activo, "activo")}
+                    style={secondaryButton(T.green)}
+                  >
+                    Marcar operativo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actualizandoId === activo.id_activo}
+                    onClick={() => cambiarEstado(activo.id_activo, "mantenimiento")}
+                    style={secondaryButton(T.yellow)}
+                  >
+                    En mantenimiento
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actualizandoId === activo.id_activo}
+                    onClick={() => cambiarEstado(activo.id_activo, "baja")}
+                    style={secondaryButton(T.red)}
+                  >
+                    Dar de baja
+                  </button>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}40` }}>
                   <span style={{ fontSize: 10.5, color: T.text3 }}>{nombreResponsable(activo.id_responsable)}</span>
@@ -1829,7 +2147,9 @@ export default function App() {
     : AREAS;
   const activosMapa = mapaDatos?.activos ?? [];
   const alertasMapa = mapaDatos?.alertas ?? [];
-  const mantenimientoCount = activosMapa.filter((activo) => activo.estado === "mantenimiento").length;
+  const mantenimientoCount = activosMapa.filter((activo) =>
+    ["mantenimiento", "baja", "pendiente_reasignacion"].includes(activo.estado)
+  ).length;
 
   function logout() {
     localStorage.removeItem("token");
@@ -1880,28 +2200,12 @@ export default function App() {
       transition: "background 0.3s ease, color 0.3s ease",
     }}>
       <ThemeToggle theme={theme} onToggle={toggleTheme} />
-      <button
-        onClick={logout}
-        style={{
-          position: "fixed",
-          top: 70,
-          right: 16,
-          zIndex: 1000,
-          background: T.bg2,
-          border: `1px solid ${T.border}`,
-          borderRadius: 8,
-          color: T.text2,
-          padding: "8px 12px",
-        }}
-      >
-        Cerrar sesión
-      </button>
-      <Sidebar page={page} onChange={setPage} T={T} mantenimientoCount={mantenimientoCount} />
+      <Sidebar page={page} onChange={setPage} T={T} mantenimientoCount={mantenimientoCount} onLogout={logout} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
         {page === "dashboard" && <DashboardPage T={T} areas={areasMapa} activos={activosMapa} alertas={alertasMapa} tipos={tiposActivo} responsables={responsables} token={token} onRefresh={cargarMapa} />}
         {page === "inventario" && <InventarioPage T={T} activos={activosMapa} areas={mapaDatos?.areas ?? []} tipos={tiposActivo} responsables={responsables} />}
         {page === "registros" && <RegistrosPage T={T} token={token} onRefresh={cargarMapa} />}
-        {page === "mantenimiento" && <MantenimientoPage T={T} activos={activosMapa} areas={mapaDatos?.areas ?? []} tipos={tiposActivo} responsables={responsables} />}
+        {page === "mantenimiento" && <MantenimientoPage T={T} activos={activosMapa} areas={mapaDatos?.areas ?? []} tipos={tiposActivo} responsables={responsables} token={token} onRefresh={cargarMapa} />}
         {page === "reportes" && <ReportesPage T={T} activos={activosMapa} areas={mapaDatos?.areas ?? []} tipos={tiposActivo} />}
       </div>
     </div>

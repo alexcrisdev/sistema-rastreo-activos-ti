@@ -12,3 +12,4 @@ from app.controllers.ubicacion_historial_controller import (
 )
 from app.controllers.websocket_controller import router as websocket_router
 from app.controllers.auth_controller import router as auth_router
+from app.controllers.estado_controller import router as estado_router

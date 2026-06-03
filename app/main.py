@@ -9,6 +9,7 @@ from app.controllers import (
     activo_router,
     area_mapa_router,
     asignacion_trabajo_router,
+    estado_router,
     mapa_router,
     responsable_router,
     simulacion_router,
@@ -36,6 +37,8 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+app.include_router(estado_router)
 
 app.add_middleware(
     CORSMiddleware,

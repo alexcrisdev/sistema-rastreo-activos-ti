@@ -73,3 +73,13 @@ export type TipoActivo = {
   id_tipo_activo: number;
   nombre: string;
 };
+
+export type UbicacionHistorial = {
+  id_historial: number;
+  id_activo: number;
+  id_area: number;
+  coord_x: number;
+  coord_y: number;
+  fecha_hora: string;
+  tipo_movimiento: string;
+};

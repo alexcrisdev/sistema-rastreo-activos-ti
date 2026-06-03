@@ -5,6 +5,7 @@ from app.db.database import get_db
 from app.schemas.activo_schema import (
     ActivoCreate,
     ActivoMovimiento,
+    ActivoReasignacion,
     ActivoResponse,
     ActivoReubicacion,
 )
@@ -16,6 +17,7 @@ from app.services.activo_service import (
     marcar_activo_fuera_empresa_service,
     mover_activo_service,
     obtener_activo_service,
+    reasignar_activo_service,
     reubicar_activo_en_empresa_service,
 )
 
@@ -89,3 +91,13 @@ def reubicar_activo_en_empresa(
     usuario_actual: Usuario = Depends(obtener_usuario_actual),
 ):
     return reubicar_activo_en_empresa_service(db, id_activo, reubicacion_data)
+
+
+@router.put("/{id_activo}/reasignar", response_model=ActivoResponse)
+def reasignar_activo(
+    id_activo: int,
+    reasignacion_data: ActivoReasignacion,
+    db: Session = Depends(get_db),
+    usuario_actual: Usuario = Depends(obtener_usuario_actual),
+):
+    return reasignar_activo_service(db, id_activo, reasignacion_data)

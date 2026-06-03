@@ -35,7 +35,16 @@ class ActivoResponse(ActivoBase):
 class ActivoMovimiento(BaseModel):
     id_area: int
     tipo_movimiento: str = "movimiento_sistema"
-    
+
 
 class ActivoReubicacion(BaseModel):
     id_area: int
+
+
+class ActivoReasignacion(BaseModel):
+    id_responsable: int
+    id_area: int
+
+
+class ActivoEstadoUpdate(BaseModel):
+    estado: str
